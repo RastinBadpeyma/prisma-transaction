@@ -9,7 +9,9 @@
 * 🟢 You can import this file directly.
 */
 
+export const WalletType = {
+  DEPOSIT: 'DEPOSIT',
+  WITHDRAW: 'WITHDRAW'
+} as const
 
-
-// This file is empty because there are no enums in the schema.
-export {}
+export type WalletType = (typeof WalletType)[keyof typeof WalletType]
