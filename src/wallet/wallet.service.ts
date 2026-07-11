@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DepositDto } from './dto/deposit.dto';
 import { WithdrawDto } from './dto/withdraw.dto';
@@ -75,31 +75,24 @@ export class WalletService {
 
   async transfer(dto: TransferDto) {
     return this.prisma.$transaction(async (tx) => {
-      const sender = await tx.user.findUnique({
-        where: {
-          id: dto.fromUserId,
+     const result = await tx.user.updateMany({
+      where: {
+        id: dto.fromUserId,
+        balance: {
+          gte: dto.amount,
+        },
+      },
+      data: {
+        balance: {
+          decrement: dto.amount
         }
-        
-      });
-      await new Promise(resolve => setTimeout(resolve,2000));
-
-
-      if (!sender) throw new Error('Sender not found');
-
-      if (Number(sender.balance) < dto.amount)
-        throw new Error('Insufficient balance');
-
-      await tx.user.update({
-        where: {
-          id: dto.fromUserId,
-        },
-
-        data: {
-          balance: {
-            decrement: dto.amount,
-          },
-        },
-      });
+      }
+     })
+     if (result.count == 0) {
+       throw new ConflictException(
+       "Insufficient balance"
+      );
+     }
 
       await tx.user.update({
         where: {
@@ -113,22 +106,21 @@ export class WalletService {
         },
       });
 
-      await tx.wallet.create({
-        data: {
-          userId: dto.fromUserId,
-          type: WalletType.WITHDRAW,
-          amount: dto.amount,
-          invoiceNumber: dto.invoiceNumber + '-OUT',
-        },
-      });
-
-      await tx.wallet.create({
-        data: {
-          userId: dto.toUserId,
-          type: WalletType.DEPOSIT,
-          amount: dto.amount,
-          invoiceNumber: dto.invoiceNumber + '-IN',
-        },
+      await tx.wallet.createMany({
+        data: [
+          {
+            userId: dto.fromUserId,
+            type: WalletType.WITHDRAW,
+            amount: dto.amount,
+            invoiceNumber: dto.invoiceNumber + '-OUT',
+          },
+          {
+            userId: dto.toUserId,
+            type: WalletType.DEPOSIT,
+            amount: dto.amount,
+            invoiceNumber: dto.invoiceNumber + '-IN',
+          },
+        ],
       });
 
       return {
